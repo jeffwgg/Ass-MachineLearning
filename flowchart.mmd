@@ -1,0 +1,40 @@
+flowchart TB
+A[Start] --> B[Load dataset CSV]
+B --> C[Data Cleaning & Normalization]
+C --> D[Remove NaN, duplicates, conflicts]
+D --> E[Save cleaned dataset]
+E --> F[Split: Train 70% / Val 15% / Test 15%]
+F --> FE[Feature Extraction - Sentence Embeddings MiniLM/BERT]
+FE --> G{Hyperparameter tuning on Validation}
+    G --> X1[Test max_depth / learning_rate / n_estimators]
+    G --> S1[Test C values]
+    G --> L1[Test C values]
+
+subgraph XGB[XGBoost]
+    X1 --> X2[Pick best config - by Macro-F1]
+    X2 --> X3[Retrain on Train+Val]
+    X3 --> X4[Test evaluation - Precision, Recall, F1, Accuracy]
+    X4 --> X5[Save model: xgb_best_pipeline.pkl]
+end
+
+subgraph SVM[SVM Linear/LinearSVC]
+    S1 --> S2[Pick best C]
+    S2 --> S3[Retrain on Train+Val]
+    S3 --> S4[Test evaluation - Precision, Recall, F1, Accuracy]
+    S4 --> S5[Save model: svm_best_pipeline.pkl]
+end
+
+subgraph LR[Logistic Regression]
+    L1 --> L2[Pick best C]
+    L2 --> L3[Retrain on Train+Val]
+    L3 --> L4[Test evaluation - Precision, Recall, F1, Accuracy]
+    L4 --> L5[Save model: logreg_best_pipeline.pkl]
+end
+
+X5 --> Z[Compare Test results across models]
+S5 --> Z
+L5 --> Z
+Z --> AA[Select final model]
+AA --> AB[Interactive CLI prediction - user input → prediction]
+AB --> AC[Discussion & Report results]
+AC --> AD[End]
