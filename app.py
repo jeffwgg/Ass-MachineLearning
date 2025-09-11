@@ -29,63 +29,60 @@ EMOTION_LABELS = {
     5: "Surprise"
 }
 
-# Model information
+# Model information (Updated for model-only files)
 MODEL_INFO = {
     "XGBoost": {
-        "file": "trained model/xgb_best_pipeline.pkl",
+        "file": "trained model/xgb_best_model.pkl",
+        "vectorizer": "trained model/tfidf_vectorizer.joblib",
         "description": "Gradient Boosting classifier with hyperparameter tuning"
     },
     "SVM": {
-        "file": "trained model/svm_best_pipeline.pkl", 
+        "file": "trained model/svm_best_model.pkl",
+        "vectorizer": "trained model/tfidf_vectorizer.joblib",
         "description": "Support Vector Machine with linear kernel"
     },
     "Logistic Regression": {
-        "file": "trained model/logreg_best_pipeline.pkl",
+        "file": "trained model/logreg_best_model.pkl",
+        "vectorizer": "trained model/tfidf_vectorizer.joblib",
         "description": "Linear classifier with regularization"
     }
 }
 
 @st.cache_resource
-def load_model(model_path):
-    """Load and cache the selected model with compatibility handling"""
+def load_model_and_vectorizer(model_path, vectorizer_path):
+    """Load and cache the selected model and TF-IDF vectorizer"""
     try:
+        # Load the model
         if not os.path.exists(model_path):
             st.error(f"Model file not found: {model_path}")
-            return None
+            return None, None
+        
+        # Load the vectorizer
+        if not os.path.exists(vectorizer_path):
+            st.error(f"Vectorizer file not found: {vectorizer_path}")
+            return None, None
         
         # Suppress warnings for version mismatches
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning)
             model = joblib.load(model_path)
+            vectorizer = joblib.load(vectorizer_path)
         
         # Handle XGBoost compatibility issues
-        if hasattr(model, 'steps'):
-            # It's a pipeline
-            classifier = model.steps[-1][1]
-            if hasattr(classifier, '__class__') and 'XGBClassifier' in str(classifier.__class__):
-                # Clean up deprecated attributes that cause issues
-                deprecated_attrs = ['use_label_encoder', '_le', '_label_encoder']
-                for attr in deprecated_attrs:
-                    if hasattr(classifier, attr):
-                        try:
-                            delattr(classifier, attr)
-                        except:
-                            pass
-                
-                # Try to patch the model for compatibility
-                try:
-                    # Force the model to work with newer XGBoost
-                    if hasattr(classifier, 'get_booster'):
-                        booster = classifier.get_booster()
-                        # This helps with some compatibility issues
-                        classifier._Booster = booster
-                except:
-                    pass
+        if hasattr(model, '__class__') and 'XGBClassifier' in str(model.__class__):
+            # Clean up deprecated attributes that cause issues
+            deprecated_attrs = ['use_label_encoder', '_le', '_label_encoder']
+            for attr in deprecated_attrs:
+                if hasattr(model, attr):
+                    try:
+                        delattr(model, attr)
+                    except:
+                        pass
         
-        return model
+        return model, vectorizer
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
-        return None
+        st.error(f"Error loading model or vectorizer: {str(e)}")
+        return None, None
 
 def preprocess_text(text):
     """Basic text preprocessing similar to the training pipeline"""
@@ -115,7 +112,7 @@ def preprocess_text(text):
     
     return text
 
-def get_predictions(model, text):
+def get_predictions(model, vectorizer, text):
     """Get predictions and probabilities from the model"""
     try:
         # Preprocess the text
@@ -124,17 +121,20 @@ def get_predictions(model, text):
         if not processed_text:
             return None, None
         
+        # Transform text using the TF-IDF vectorizer
+        text_features = vectorizer.transform([processed_text])
+        
         # Get prediction
-        prediction = model.predict([processed_text])[0]
+        prediction = model.predict(text_features)[0]
         
         # Get probabilities
         if hasattr(model, 'predict_proba'):
             # Model supports probability prediction
-            probabilities = model.predict_proba([processed_text])[0]
+            probabilities = model.predict_proba(text_features)[0]
         else:
             # For SVM, use decision function + softmax
             if hasattr(model, 'decision_function'):
-                decision_scores = model.decision_function([processed_text])[0]
+                decision_scores = model.decision_function(text_features)[0]
                 probabilities = softmax(decision_scores)
             else:
                 # Fallback: equal probabilities with max for predicted class
@@ -209,17 +209,14 @@ def main():
     # Display model information
     st.sidebar.markdown(f"**Selected:** {selected_model}")
     st.sidebar.markdown(f"*{MODEL_INFO[selected_model]['description']}*")
-    
-    # Show compatibility warning for XGBoost
-    if selected_model == "XGBoost":
-        st.sidebar.info("✅ **XGBoost Model**: Retrained with XGBoost 2.0.3")
-    
-    # Load the selected model
+        
+    # Load the selected model and vectorizer
     model_path = MODEL_INFO[selected_model]['file']
-    model = load_model(model_path)
+    vectorizer_path = MODEL_INFO[selected_model]['vectorizer']
+    model, vectorizer = load_model_and_vectorizer(model_path, vectorizer_path)
     
-    if model is None:
-        st.error("Please ensure the model files are available in the 'trained model/' directory.")
+    if model is None or vectorizer is None:
+        st.error("Please ensure the model files and TF-IDF vectorizer are available in the 'trained model/' directory.")
         st.stop()
     
     # Main content area
@@ -260,7 +257,7 @@ def main():
             st.warning("⚠️ Please enter some text to classify.")
         else:
             with st.spinner("Analyzing emotion..."):
-                prediction, probabilities = get_predictions(model, user_text)
+                prediction, probabilities = get_predictions(model, vectorizer, user_text)
             
             if prediction is not None and probabilities is not None:
                 st.markdown("---")

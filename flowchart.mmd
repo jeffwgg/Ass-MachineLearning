@@ -1,40 +1,43 @@
 flowchart TB
-A[Start] --> B[Load dataset CSV]
+A[Start] --> B[Load raw CSV]
 B --> C[Data Cleaning & Normalization]
-C --> D[Remove NaN, duplicates, conflicts]
-D --> E[Save cleaned dataset]
-E --> F[Split: Train 70% / Val 15% / Test 15%]
-F --> FE[Feature Extraction - Sentence Embeddings MiniLM/BERT]
-FE --> G{Hyperparameter tuning on Validation}
-    G --> X1[Test max_depth / learning_rate / n_estimators]
-    G --> S1[Test C values]
-    G --> L1[Test C values]
+C --> D[Remove NaN, duplicates, conflicts, very short]
+D --> E["Save cleaned dataset (emotions_clean.csv)"]
+E --> F["Split: Train 70% / Val 15% / Test 15% (stratified)"]
+F --> G[Fit TF-IDF on Train only]
+G --> H[Transform Train/Val/Test with fitted vectorizer]
+H --> I[Save artifacts: TF-IDF + features + labels]
+
+I --> J{Hyperparameter tuning on Validation}
+    J --> X1["Test max_depth / learning_rate / n_estimators (XGB)"]
+    J --> S1["Test C values (SVM)"]
+    J --> L1["Test C values (LR)"]
 
 subgraph XGB[XGBoost]
-    X1 --> X2[Pick best config - by Macro-F1]
+    X1 --> X2[Pick best config by Macro-F1]
     X2 --> X3[Retrain on Train+Val]
-    X3 --> X4[Test evaluation - Precision, Recall, F1, Accuracy]
-    X4 --> X5[Save model: xgb_best_pipeline.pkl]
+    X3 --> X4[Test evaluation: Precision, Recall, F1, Accuracy]
+    X4 --> X5[Save model: xgb_best.pkl]
 end
 
-subgraph SVM[SVM Linear/LinearSVC]
+subgraph SVM[LinearSVC]
     S1 --> S2[Pick best C]
     S2 --> S3[Retrain on Train+Val]
-    S3 --> S4[Test evaluation - Precision, Recall, F1, Accuracy]
-    S4 --> S5[Save model: svm_best_pipeline.pkl]
+    S3 --> S4[Test evaluation: Precision, Recall, F1, Accuracy]
+    S4 --> S5[Save model: svm_best.pkl]
 end
 
 subgraph LR[Logistic Regression]
     L1 --> L2[Pick best C]
     L2 --> L3[Retrain on Train+Val]
-    L3 --> L4[Test evaluation - Precision, Recall, F1, Accuracy]
-    L4 --> L5[Save model: logreg_best_pipeline.pkl]
+    L3 --> L4[Test evaluation: Precision, Recall, F1, Accuracy]
+    L4 --> L5[Save model: logreg_best.pkl]
 end
 
 X5 --> Z[Compare Test results across models]
 S5 --> Z
 L5 --> Z
 Z --> AA[Select final model]
-AA --> AB[Interactive CLI prediction - user input → prediction]
-AB --> AC[Discussion & Report results]
+AA --> AB[Interactive prediction demo]
+AB --> AC[Discussion & Report]
 AC --> AD[End]
