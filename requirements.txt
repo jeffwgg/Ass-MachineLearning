@@ -7,3 +7,4 @@ xgboost>=1.6.0
 plotly==5.17.0
 scipy==1.11.1
 nltk==3.8.1
+matplotlib==3.7.2

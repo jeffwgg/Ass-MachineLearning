@@ -122,19 +122,19 @@ EMOTION_LABELS = {
 # Model information (Updated for model-only files)
 MODEL_INFO = {
     "XGBoost": {
-        "file": "trained model/xgb_best_model.pkl",
-        "vectorizer": "trained model/tfidf_vectorizer.joblib",
+        "file": "output/xgb_best_model.pkl",
+        "vectorizer": "output/tfidf_vectorizer.joblib",
         "description": "Gradient Boosting classifier with hyperparameter tuning"
     },
     "SVM": {
-        "file": "trained model/svm_best_model.pkl",
-        "vectorizer": "trained model/tfidf_vectorizer.joblib",
+        "file": "output/svm_best_model.pkl",
+        "vectorizer": "output/tfidf_vectorizer.joblib",
         "description": "Support Vector Machine with linear kernel"
     },
     "Logistic Regression": {
-        "file": "trained model/logreg_best_model.pkl",
-        "vectorizer": "trained model/tfidf_vectorizer.joblib",
-        "description": "Linear classifier with regularization"
+        "file": "output/logreg_best_model.pkl",
+        "vectorizer": "output/tfidf_vectorizer.joblib",
+        "description": "Linear classifier with reg`ularization"
     }
 }
 
