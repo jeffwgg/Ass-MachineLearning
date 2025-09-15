@@ -2,7 +2,7 @@
 
 > **Quick Start for Teammates:**
 > ```bash
-> # 1. Check if you have Python 3.9+
+> # 1. Check if you have Python 3.9+ (Python 3.11 is the best choice)
 > python3 --version
 > # If you see Python 3.9+ or higher, skip to step 3
 > 
@@ -13,8 +13,8 @@
 > python3 -m venv .venv
 > # Windows: .venv\Scripts\activate
 > # macOS/Linux: source .venv/bin/activate
+
 > pip install -r requirements.txt
-> pip install streamlit
 > streamlit run app.py
 > ```assification Streamlit App
 

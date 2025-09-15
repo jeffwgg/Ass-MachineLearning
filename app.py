@@ -4,12 +4,102 @@ import numpy as np
 import pandas as pd
 import os
 import re
+import html
+import unicodedata
 from pathlib import Path
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy.special import softmax
 import warnings
 warnings.filterwarnings('ignore')
+
+# Try to import NLTK components for advanced preprocessing
+try:
+    import nltk
+    from nltk.corpus import stopwords, wordnet
+    from nltk.stem import WordNetLemmatizer
+    from nltk import pos_tag
+    
+    # Download required NLTK data (quietly)
+    nltk.download("stopwords", quiet=True)
+    nltk.download("wordnet", quiet=True)
+    nltk.download("omw-1.4", quiet=True)
+    try:
+        nltk.download("averaged_perceptron_tagger_eng", quiet=True)
+    except:
+        nltk.download("averaged_perceptron_tagger", quiet=True)
+    
+    NLTK_AVAILABLE = True
+    
+    # Setup stopwords (keep negations)
+    BASE_STOPWORDS = set(stopwords.words("english"))
+    KEEP_NEG = {"no", "not", "never", "without"}
+    FINAL_STOPWORDS = BASE_STOPWORDS - KEEP_NEG
+    
+    # Setup lemmatizer
+    LEMMA = WordNetLemmatizer()
+    
+    def wn_pos(tag: str):
+        """Convert POS tag to wordnet format"""
+        c = tag[0].upper() if tag else "N"
+        if c == "J": return wordnet.ADJ
+        if c == "V": return wordnet.VERB
+        if c == "N": return wordnet.NOUN
+        if c == "R": return wordnet.ADV
+        return wordnet.NOUN
+
+except ImportError:
+    NLTK_AVAILABLE = False
+    print("NLTK not available - using basic preprocessing")
+
+# Contractions mapping
+CONTRACTIONS = {
+    "can't":"can not", "cant":"can not", "won't":"will not", "wont":"will not",
+    "don't":"do not", "dont":"do not", "isn't":"is not", "isnt":"is not",
+    "aren't":"are not", "arent":"are not", "doesn't":"does not", "doesnt":"does not",
+    "didn't":"did not", "didnt":"did not", "haven't":"have not", "havent":"have not",
+    "hasn't":"has not", "hasnt":"has not", "hadn't":"had not", "hadnt":"had not",
+    "i'm":"i am", "im":"i am", "it's":"it is", "he's":"he is", "she's":"she is",
+    "that's":"that is", "there's":"there is", "what's":"what is", "who's":"who is",
+    "i've":"i have", "we've":"we have", "they've":"they have",
+    "i'll":"i will", "we'll":"we will", "you'll":"you will", "they'll":"they will",
+    "i'd":"i would", "you'd":"you would", "he'd":"he would", "she'd":"she would", "they'd":"they would",
+    "y'all":"you all", "should've":"should have", "could've":"could have", "would've":"would have"
+}
+
+def expand_contractions(text: str) -> str:
+    """Expand contractions like can't -> can not"""
+    keys = sorted(CONTRACTIONS.keys(), key=len, reverse=True)
+    pattern = re.compile(r"\b(" + "|".join(map(re.escape, keys)) + r")\b", re.IGNORECASE)
+    return pattern.sub(lambda m: CONTRACTIONS[m.group(0).lower()], text)
+
+# Emoticons mapping
+EMOTICONS = {
+    r":-\)": "smile", r":\)": "smile",
+    r":-D": "laugh",  r":D": "laugh", 
+    r":-\(": "sad",   r":\(": "sad",
+    r";-\)": "wink",  r";\)": "wink",
+    r":'\(": "cry",
+    r":-P": "playful", r":P": "playful",
+    r":-O": "surprise", r":O": "surprise",
+    r":/": "skeptical", r":-\|": "neutral"
+}
+
+EMOTICON_REGEX = [(re.compile(k), v) for k, v in EMOTICONS.items()]
+
+def replace_emoticons(text: str) -> str:
+    """Replace emoticons with words"""
+    for regex, word in EMOTICON_REGEX:
+        text = regex.sub(f" {word} ", text)
+    return text
+
+# Compiled regex patterns for efficiency
+URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
+MENTION_PATTERN = re.compile(r"@\w+")  
+HASHTAG_PATTERN = re.compile(r"#(\w+)")
+MULTISPACE = re.compile(r"\s+")
+REPEAT_CHARS = re.compile(r"(.)\1{2,}")  # 3+ same character → 2
+NUM_PATTERN = re.compile(r"\b\d+\b")
 
 # Configure Streamlit page
 st.set_page_config(
@@ -85,30 +175,75 @@ def load_model_and_vectorizer(model_path, vectorizer_path):
         return None, None
 
 def preprocess_text(text):
-    """Basic text preprocessing similar to the training pipeline"""
+    """Enhanced text preprocessing matching the training pipeline"""
     if not text or not isinstance(text, str):
         return ""
     
-    # Basic cleaning
-    text = text.lower().strip()
+    # Core normalization
+    text = unicodedata.normalize("NFKC", text)  # Unicode normalization
+    text = html.unescape(text)  # HTML entity decoding
+    text = text.strip().lower()
     
     # Remove URLs
-    text = re.sub(r'https?://\S+|www\.\S+', ' ', text)
+    text = URL_PATTERN.sub(" ", text)
     
-    # Remove mentions
-    text = re.sub(r'@\w+', ' ', text)
+    # Remove mentions (@username)
+    text = MENTION_PATTERN.sub(" ", text)
     
-    # Keep hashtag words (remove #)
-    text = re.sub(r'#(\w+)', r'\1', text)
+    # Extract hashtag words (remove # symbol)
+    text = HASHTAG_PATTERN.sub(r"\1", text)  # #happy -> happy
     
-    # Replace numbers with <num>
-    text = re.sub(r'\b\d+\b', ' <num> ', text)
+    # Expand contractions
+    text = expand_contractions(text)  # can't -> can not
     
-    # Keep only letters, numbers, and emotion punctuation
-    text = re.sub(r'[^\w\s!?]', ' ', text)
+    # Replace emoticons with words
+    text = replace_emoticons(text)  # :) -> smile
+    
+    # Reduce repeated characters (sooo -> soo)
+    text = REPEAT_CHARS.sub(r"\1\1", text)
+    
+    # Replace numbers with <num> token
+    text = NUM_PATTERN.sub(" <num> ", text)
+    
+    # Keep only letters, numbers, emotion punctuation, and <num> token
+    text = re.sub(r"[^\w\s!?<>]", " ", text)
     
     # Remove multiple spaces
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = MULTISPACE.sub(" ", text).strip()
+    
+    # Advanced processing if NLTK is available
+    if NLTK_AVAILABLE:
+        tokens = text.split()
+        if not tokens:
+            return ""
+        
+        # POS tagging for lemmatization
+        try:
+            tagged = pos_tag(tokens, lang="eng")
+            processed_tokens = []
+            
+            for word, tag in tagged:
+                # Preserve emotion markers and <num> token
+                if word in {"!", "?", "<num>"}:
+                    processed_tokens.append(word)
+                    continue
+                
+                # Remove stopwords but keep negations
+                if word in FINAL_STOPWORDS:
+                    continue
+                
+                # Lemmatization with POS tags
+                try:
+                    word = LEMMA.lemmatize(word, wn_pos(tag))
+                except:
+                    pass  # Keep original word if lemmatization fails
+                
+                processed_tokens.append(word)
+            
+            text = " ".join(processed_tokens)
+        except:
+            # Fallback to basic processing if NLTK fails
+            pass
     
     return text
 
